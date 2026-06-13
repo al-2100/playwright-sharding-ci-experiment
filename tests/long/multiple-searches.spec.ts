@@ -1,0 +1,18 @@
+﻿import { expect, test } from "@playwright/test";
+import {
+  exerciseUiWorkload,
+  openShop,
+  productText,
+  searchCatalog,
+} from "../support/juice";
+
+test("ejecuta varias búsquedas consecutivas", async ({ page }) => {
+  await openShop(page);
+  await searchCatalog(page, "apple");
+  await expect(productText(page, "Apple Juice (1000ml)")).toBeVisible();
+  await searchCatalog(page, "banana");
+  await expect(productText(page, "Banana Juice (1000ml)")).toBeVisible();
+  await searchCatalog(page, "juice");
+  await expect(page.getByText(/Search Results - juice/)).toBeVisible();
+  await exerciseUiWorkload(page, 3);
+});

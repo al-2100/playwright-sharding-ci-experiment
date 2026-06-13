@@ -1,0 +1,31 @@
+{
+  "name": "playwright-sharding-ci-experiment",
+  "version": "1.0.0",
+  "description": "Experimento reproducible de sharding balanceado para Playwright E2E.",
+  "type": "module",
+  "scripts": {
+    "app:up": "docker compose up -d",
+    "app:down": "docker compose down",
+    "wait": "node scripts/wait-for-app.mjs",
+    "test": "playwright test",
+    "calibrate": "node scripts/calibrate.mjs",
+    "plan": "node scripts/plan-shards.mjs",
+    "run": "node scripts/run-strategy.mjs",
+    "run:parallel": "node scripts/run-parallel.mjs",
+    "experiment": "node scripts/run-experiment.mjs",
+    "metrics": "node scripts/collect-metrics.mjs",
+    "gha:matrix": "node scripts/gha-matrix.mjs",
+    "gha:plans": "node scripts/gha-create-plans.mjs",
+    "gha:summary": "node scripts/summarize-experiment.mjs"
+  },
+  "keywords": [
+    "playwright",
+    "sharding",
+    "ci"
+  ],
+  "license": "ISC",
+  "devDependencies": {
+    "@playwright/cli": "^0.1.14",
+    "@playwright/test": "^1.60.0"
+  }
+}

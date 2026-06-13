@@ -1,0 +1,9 @@
+services:
+  juice-shop:
+    image: bkimminich/juice-shop@sha256:5d572029141b32e065edefc9b09ca88567296ff7134ebe3181ab7ac9e9ed4056
+    container_name: thesis-juice-shop
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+    restart: unless-stopped

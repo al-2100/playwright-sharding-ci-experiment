@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "22"
+
+jobs:
+  e2e:
+    name: Playwright E2E
+    runs-on: ubuntu-24.04
+    services:
+      juice-shop:
+        image: bkimminich/juice-shop@sha256:5d572029141b32e065edefc9b09ca88567296ff7134ebe3181ab7ac9e9ed4056
+        ports:
+          - 3000:3000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: node scripts/wait-for-app.mjs
+      - name: Run Playwright suite
+        run: npm test -- --workers=1

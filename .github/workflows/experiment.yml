@@ -1,0 +1,324 @@
+name: Sharding benchmark experiment
+
+on:
+  workflow_dispatch:
+    inputs:
+      repetitions:
+        description: Number of evaluation repetitions
+        required: true
+        default: "3"
+      calibration_runs:
+        description: Number of calibration runs for historical durations
+        required: true
+        default: "3"
+      shard_counts:
+        description: Comma-separated shard counts
+        required: true
+        default: "4"
+      workers:
+        description: Playwright workers per shard
+        required: true
+        default: "1"
+      include_fully:
+        description: Include native fullyParallel strategy
+        type: boolean
+        required: true
+        default: true
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "22"
+  RUNNER_IMAGE: ubuntu-24.04
+
+jobs:
+  prepare:
+    name: Prepare matrices
+    runs-on: ubuntu-24.04
+    outputs:
+      calibration: ${{ steps.matrix.outputs.calibration }}
+      sequential: ${{ steps.matrix.outputs.sequential }}
+      native: ${{ steps.matrix.outputs.native }}
+      balanced: ${{ steps.matrix.outputs.balanced }}
+      fully: ${{ steps.matrix.outputs.fully }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - id: matrix
+        shell: bash
+        run: |
+          node scripts/gha-matrix.mjs \
+            --repetitions='${{ inputs.repetitions }}' \
+            --calibration-runs='${{ inputs.calibration_runs }}' \
+            --shard-counts='${{ inputs.shard_counts }}' \
+            --include-fully='${{ inputs.include_fully }}' >> "$GITHUB_OUTPUT"
+
+  calibrate:
+    name: Calibrate ${{ matrix.calibration }}
+    needs: prepare
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare.outputs.calibration) }}
+    services:
+      juice-shop:
+        image: bkimminich/juice-shop@sha256:5d572029141b32e065edefc9b09ca88567296ff7134ebe3181ab7ac9e9ed4056
+        ports:
+          - 3000:3000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: node scripts/wait-for-app.mjs
+      - name: Run calibration
+        run: |
+          node scripts/run-strategy.mjs \
+            --strategy=sequential \
+            --run-id=calibration-r${{ matrix.calibration }} \
+            --workers='${{ inputs.workers }}' \
+            --test-dir=tests
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: calibration-${{ matrix.calibration }}
+          path: |
+            artifacts/raw/calibration-r${{ matrix.calibration }}
+            artifacts/runs/calibration-r${{ matrix.calibration }}
+          if-no-files-found: ignore
+
+  plan:
+    name: Build LPT plans
+    needs: calibrate
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - uses: actions/download-artifact@v4
+        with:
+          path: downloaded-artifacts
+          pattern: calibration-*
+          merge-multiple: true
+      - name: Extract history
+        run: |
+          node scripts/extract-durations.mjs \
+            --input=downloaded-artifacts \
+            --output=artifacts/history/history.json \
+            --test-dir=tests
+      - name: Create plans
+        run: |
+          node scripts/gha-create-plans.mjs \
+            --shard-counts='${{ inputs.shard_counts }}' \
+            --history=artifacts/history/history.json \
+            --test-dir=tests
+      - uses: actions/upload-artifact@v4
+        with:
+          name: plans
+          path: |
+            artifacts/history/history.json
+            artifacts/plans/**
+
+  sequential:
+    name: Sequential r${{ matrix.repetition }}
+    needs:
+      - prepare
+      - plan
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare.outputs.sequential) }}
+    services:
+      juice-shop:
+        image: bkimminich/juice-shop@sha256:5d572029141b32e065edefc9b09ca88567296ff7134ebe3181ab7ac9e9ed4056
+        ports:
+          - 3000:3000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: node scripts/wait-for-app.mjs
+      - name: Run sequential evaluation
+        run: |
+          node scripts/run-strategy.mjs \
+            --strategy=sequential \
+            --run-id=eval-seq-r${{ matrix.repetition }} \
+            --workers=1 \
+            --test-dir=tests
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: eval-seq-r${{ matrix.repetition }}
+          path: |
+            artifacts/raw/eval-seq-r${{ matrix.repetition }}
+            artifacts/runs/eval-seq-r${{ matrix.repetition }}
+          if-no-files-found: ignore
+
+  native:
+    name: Native m${{ matrix.shards }} r${{ matrix.repetition }} s${{ matrix.shard }}
+    needs:
+      - prepare
+      - plan
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare.outputs.native) }}
+    services:
+      juice-shop:
+        image: bkimminich/juice-shop@sha256:5d572029141b32e065edefc9b09ca88567296ff7134ebe3181ab7ac9e9ed4056
+        ports:
+          - 3000:3000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: node scripts/wait-for-app.mjs
+      - name: Run native shard
+        run: |
+          node scripts/run-strategy.mjs \
+            --strategy=native \
+            --run-id=eval-native-m${{ matrix.shards }}-r${{ matrix.repetition }} \
+            --shards=${{ matrix.shards }} \
+            --shard=${{ matrix.shard }} \
+            --workers='${{ inputs.workers }}' \
+            --test-dir=tests
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: eval-native-m${{ matrix.shards }}-r${{ matrix.repetition }}-s${{ matrix.shard }}
+          path: |
+            artifacts/raw/eval-native-m${{ matrix.shards }}-r${{ matrix.repetition }}
+            artifacts/runs/eval-native-m${{ matrix.shards }}-r${{ matrix.repetition }}
+          if-no-files-found: ignore
+
+  fully:
+    name: Fully m${{ matrix.shards }} r${{ matrix.repetition }} s${{ matrix.shard }}
+    if: ${{ inputs.include_fully }}
+    needs:
+      - prepare
+      - plan
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare.outputs.fully) }}
+    services:
+      juice-shop:
+        image: bkimminich/juice-shop@sha256:5d572029141b32e065edefc9b09ca88567296ff7134ebe3181ab7ac9e9ed4056
+        ports:
+          - 3000:3000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: node scripts/wait-for-app.mjs
+      - name: Run fullyParallel shard
+        run: |
+          node scripts/run-strategy.mjs \
+            --strategy=native-fully \
+            --run-id=eval-native-fully-m${{ matrix.shards }}-r${{ matrix.repetition }} \
+            --shards=${{ matrix.shards }} \
+            --shard=${{ matrix.shard }} \
+            --workers='${{ inputs.workers }}' \
+            --test-dir=tests
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: eval-native-fully-m${{ matrix.shards }}-r${{ matrix.repetition }}-s${{ matrix.shard }}
+          path: |
+            artifacts/raw/eval-native-fully-m${{ matrix.shards }}-r${{ matrix.repetition }}
+            artifacts/runs/eval-native-fully-m${{ matrix.shards }}-r${{ matrix.repetition }}
+          if-no-files-found: ignore
+
+  balanced:
+    name: Balanced m${{ matrix.shards }} r${{ matrix.repetition }} s${{ matrix.shard }}
+    needs:
+      - prepare
+      - plan
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare.outputs.balanced) }}
+    services:
+      juice-shop:
+        image: bkimminich/juice-shop@sha256:5d572029141b32e065edefc9b09ca88567296ff7134ebe3181ab7ac9e9ed4056
+        ports:
+          - 3000:3000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - uses: actions/download-artifact@v4
+        with:
+          name: plans
+          path: .
+      - run: node scripts/wait-for-app.mjs
+      - name: Run balanced shard
+        run: |
+          node scripts/run-strategy.mjs \
+            --strategy=balanced \
+            --run-id=eval-balanced-m${{ matrix.shards }}-r${{ matrix.repetition }} \
+            --shards=${{ matrix.shards }} \
+            --shard=${{ matrix.shard }} \
+            --workers='${{ inputs.workers }}' \
+            --test-dir=tests \
+            --plan=artifacts/plans/eval-balanced-m${{ matrix.shards }}/plan-${{ matrix.shards }}.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: eval-balanced-m${{ matrix.shards }}-r${{ matrix.repetition }}-s${{ matrix.shard }}
+          path: |
+            artifacts/raw/eval-balanced-m${{ matrix.shards }}-r${{ matrix.repetition }}
+            artifacts/runs/eval-balanced-m${{ matrix.shards }}-r${{ matrix.repetition }}
+          if-no-files-found: ignore
+
+  summarize:
+    name: Summarize results
+    if: ${{ always() }}
+    needs:
+      - plan
+      - sequential
+      - native
+      - fully
+      - balanced
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - uses: actions/download-artifact@v4
+        with:
+          path: downloaded-artifacts
+          merge-multiple: true
+      - name: Summarize
+        run: |
+          node scripts/summarize-experiment.mjs \
+            --input=downloaded-artifacts \
+            --output=artifacts/metrics
+      - uses: actions/upload-artifact@v4
+        with:
+          name: experiment-summary
+          path: artifacts/metrics/**
