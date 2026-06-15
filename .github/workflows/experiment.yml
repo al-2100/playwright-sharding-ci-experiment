@@ -273,7 +273,16 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: plans
-          path: .
+          path: artifacts
+      - name: Check downloaded plan
+        shell: bash
+        run: |
+          PLAN="artifacts/plans/eval-balanced-m${{ matrix.shards }}/plan-${{ matrix.shards }}.json"
+          test -f "$PLAN" || {
+            echo "Expected plan not found: $PLAN"
+            find artifacts -maxdepth 4 -type f | sort
+            exit 1
+          }
       - run: node scripts/wait-for-app.mjs
       - name: Run balanced shard
         run: |
