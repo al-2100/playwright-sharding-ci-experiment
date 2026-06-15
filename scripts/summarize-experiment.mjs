@@ -80,6 +80,7 @@ function tCritical95(sampleSize) {
 
 function numeric(values) {
   return values
+    .filter((value) => value !== null && value !== undefined && value !== "")
     .map((value) => Number(value))
     .filter((value) => Number.isFinite(value));
 }
@@ -226,6 +227,7 @@ for (const file of files.filter((item) => item.endsWith(".meta.json"))) {
 
 const baselineByRepetition = new Map();
 for (const [runId, records] of recordsByRunId.entries()) {
+  if (!runId.startsWith("eval-seq-")) continue;
   if (records[0]?.strategy !== "sequential") continue;
   const repetition = repetitionOf(runId);
   if (!repetition) continue;
@@ -245,7 +247,10 @@ const summaries = [...recordsByRunId.entries()]
     return a.shards - b.shards;
   });
 
-const aggregates = aggregateSummaries(summaries);
+const evaluationSummaries = summaries.filter((summary) =>
+  summary.runId.startsWith("eval-"),
+);
+const aggregates = aggregateSummaries(evaluationSummaries);
 
 await ensureDir(outputDir);
 await writeJson(path.join(outputDir, "gha-summary.json"), {
@@ -261,6 +266,7 @@ await writeJson(path.join(outputDir, "gha-aggregate.json"), {
   measurementScope,
   measurementNote:
     "Aggregates are computed from per-run Playwright command durations.",
+  aggregateScope: "evaluation_runs_only",
   aggregates,
 });
 
