@@ -1,0 +1,38 @@
+name: Publish Juice Shop image to GHCR
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  SOURCE_IMAGE: bkimminich/juice-shop@sha256:5d572029141b32e065edefc9b09ca88567296ff7134ebe3181ab7ac9e9ed4056
+  TARGET_IMAGE: ghcr.io/al-2100/juice-shop-thesis:experiment-v1
+
+jobs:
+  publish:
+    name: Mirror pinned image
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull and publish pinned image
+        shell: bash
+        run: |
+          docker pull "$SOURCE_IMAGE"
+          docker tag "$SOURCE_IMAGE" "$TARGET_IMAGE"
+          docker push "$TARGET_IMAGE"
+
+      - name: Report published digest
+        shell: bash
+        run: |
+          digest="$(docker buildx imagetools inspect "$TARGET_IMAGE" | awk '/^Digest:/ { print $2; exit }')"
+          echo "### Published image" >> "$GITHUB_STEP_SUMMARY"
+          echo "\`$TARGET_IMAGE@$digest\`" >> "$GITHUB_STEP_SUMMARY"
