@@ -65,7 +65,7 @@ jobs:
       matrix: ${{ fromJSON(needs.prepare.outputs.calibration) }}
     services:
       juice-shop:
-        image: bkimminich/juice-shop@sha256:5d572029141b32e065edefc9b09ca88567296ff7134ebe3181ab7ac9e9ed4056
+        image: ghcr.io/al-2100/juice-shop-thesis@sha256:046398115a477c5c4b6b1fccead365d4a447ba466f82db7c3e30f4ddbade2ad8
         ports:
           - 3000:3000
     steps:
@@ -137,7 +137,7 @@ jobs:
       matrix: ${{ fromJSON(needs.prepare.outputs.sequential) }}
     services:
       juice-shop:
-        image: bkimminich/juice-shop@sha256:5d572029141b32e065edefc9b09ca88567296ff7134ebe3181ab7ac9e9ed4056
+        image: ghcr.io/al-2100/juice-shop-thesis@sha256:046398115a477c5c4b6b1fccead365d4a447ba466f82db7c3e30f4ddbade2ad8
         ports:
           - 3000:3000
     steps:
@@ -176,7 +176,7 @@ jobs:
       matrix: ${{ fromJSON(needs.prepare.outputs.native) }}
     services:
       juice-shop:
-        image: bkimminich/juice-shop@sha256:5d572029141b32e065edefc9b09ca88567296ff7134ebe3181ab7ac9e9ed4056
+        image: ghcr.io/al-2100/juice-shop-thesis@sha256:046398115a477c5c4b6b1fccead365d4a447ba466f82db7c3e30f4ddbade2ad8
         ports:
           - 3000:3000
     steps:
@@ -218,7 +218,7 @@ jobs:
       matrix: ${{ fromJSON(needs.prepare.outputs.fully) }}
     services:
       juice-shop:
-        image: bkimminich/juice-shop@sha256:5d572029141b32e065edefc9b09ca88567296ff7134ebe3181ab7ac9e9ed4056
+        image: ghcr.io/al-2100/juice-shop-thesis@sha256:046398115a477c5c4b6b1fccead365d4a447ba466f82db7c3e30f4ddbade2ad8
         ports:
           - 3000:3000
     steps:
@@ -259,7 +259,7 @@ jobs:
       matrix: ${{ fromJSON(needs.prepare.outputs.balanced) }}
     services:
       juice-shop:
-        image: bkimminich/juice-shop@sha256:5d572029141b32e065edefc9b09ca88567296ff7134ebe3181ab7ac9e9ed4056
+        image: ghcr.io/al-2100/juice-shop-thesis@sha256:046398115a477c5c4b6b1fccead365d4a447ba466f82db7c3e30f4ddbade2ad8
         ports:
           - 3000:3000
     steps:
