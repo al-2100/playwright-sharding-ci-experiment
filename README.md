@@ -7,7 +7,7 @@ Reproducible Playwright experiment for comparing end-to-end test execution strat
 - native Playwright sharding with `fullyParallel`;
 - duration-aware balanced sharding using an LPT-style planner.
 
-The suite lives in `tests` and contains 33 tests across 23 spec files.
+The suite lives in `tests` and contains 39 tests across 23 spec files.
 
 ## Local Setup
 
