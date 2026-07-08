@@ -16,6 +16,8 @@
     "metrics": "node scripts/collect-metrics.mjs",
     "gha:matrix": "node scripts/gha-matrix.mjs",
     "gha:plans": "node scripts/gha-create-plans.mjs",
+    "gha:variability-matrix": "node scripts/gha-variability-matrix.mjs",
+    "gha:variability-plans": "node scripts/gha-create-variability-plans.mjs",
     "gha:summary": "node scripts/summarize-experiment.mjs"
   },
   "keywords": [

@@ -6,6 +6,7 @@ import {
   parseArgs,
   projectRoot,
   readJson,
+  workloadFiles,
   writeJson,
 } from "./common.mjs";
 
@@ -13,6 +14,7 @@ const args = parseArgs();
 const runId = args["run-id"] ?? `plan-${Date.now()}`;
 const shards = Math.max(1, intArg(args.shards, 4));
 const testDir = String(args["test-dir"] ?? "tests");
+const selectedFiles = await workloadFiles(args);
 const historyPath = path.resolve(
   projectRoot,
   args.history ?? "artifacts/history/history.json",
@@ -23,7 +25,10 @@ const outputPath = path.resolve(
 );
 
 const history = await readJson(historyPath, { items: {} });
-const specFiles = await listSpecFiles(path.resolve(projectRoot, testDir));
+const specFiles =
+  selectedFiles.length > 0
+    ? selectedFiles
+    : await listSpecFiles(path.resolve(projectRoot, testDir));
 const knownDurations = Object.values(history.items ?? {})
   .map((item) => Number(item.medianMs))
   .filter(Boolean);
@@ -62,6 +67,8 @@ const plan = {
   shards,
   createdAt: new Date().toISOString(),
   testDir,
+  workload: args.workload ?? null,
+  selectedFiles,
   history: path.relative(projectRoot, historyPath).replaceAll(path.sep, "/"),
   fallbackMs,
   totalEstimatedMs: assignments.reduce(

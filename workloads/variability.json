@@ -1,0 +1,62 @@
+{
+  "description": "Subconjuntos reales de pruebas para evaluar el efecto de la variabilidad temporal en el sharding balanceado.",
+  "workloads": [
+    {
+      "id": "low",
+      "label": "Baja variabilidad",
+      "files": [
+        "tests/account/account-menu-login-link.spec.ts",
+        "tests/account/invalid-login.spec.ts",
+        "tests/basket/add-to-basket.spec.ts",
+        "tests/basket/basket-sequence.spec.ts",
+        "tests/basket/catalog-basket-flow.spec.ts",
+        "tests/basket/checkout-preparation.spec.ts",
+        "tests/basket/multi-product-cart.spec.ts",
+        "tests/basket/search-detail-basket-flow.spec.ts",
+        "tests/catalog/catalog-pagination-tour.spec.ts",
+        "tests/catalog/product-detail-tour.spec.ts",
+        "tests/catalog/search-variants.spec.ts",
+        "tests/public/about-page.spec.ts",
+        "tests/public/public-entrypoints.spec.ts"
+      ]
+    },
+    {
+      "id": "medium",
+      "label": "Variabilidad media",
+      "files": [
+        "tests/account/invalid-login.spec.ts",
+        "tests/account/login-retry.spec.ts",
+        "tests/basket/add-to-basket.spec.ts",
+        "tests/basket/basket-navigation.spec.ts",
+        "tests/basket/basket-sequence.spec.ts",
+        "tests/basket/catalog-basket-flow.spec.ts",
+        "tests/basket/checkout-preparation.spec.ts",
+        "tests/basket/multi-product-cart.spec.ts",
+        "tests/basket/search-and-add-banana.spec.ts",
+        "tests/basket/search-detail-basket-flow.spec.ts",
+        "tests/catalog/catalog-searches.spec.ts",
+        "tests/catalog/product-details.spec.ts",
+        "tests/public/photo-wall.spec.ts"
+      ]
+    },
+    {
+      "id": "high",
+      "label": "Alta variabilidad",
+      "files": [
+        "tests/account/login-retry.spec.ts",
+        "tests/basket/basket-navigation.spec.ts",
+        "tests/basket/catalog-basket-flow.spec.ts",
+        "tests/basket/search-and-add-banana.spec.ts",
+        "tests/catalog/catalog-pagination.spec.ts",
+        "tests/catalog/catalog-searches.spec.ts",
+        "tests/catalog/catalog-third-page.spec.ts",
+        "tests/catalog/product-detail-tour.spec.ts",
+        "tests/catalog/product-details.spec.ts",
+        "tests/public/about-page.spec.ts",
+        "tests/public/photo-wall.spec.ts",
+        "tests/public/public-entrypoints.spec.ts",
+        "tests/public/public-navigation.spec.ts"
+      ]
+    }
+  ]
+}

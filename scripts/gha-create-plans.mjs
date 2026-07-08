@@ -9,6 +9,10 @@ const shardCounts = String(args["shard-counts"] ?? "4")
 
 const history = String(args.history ?? "artifacts/history/history.json");
 const testDir = String(args["test-dir"] ?? "tests");
+const workloadArgs = [];
+if (args.workload) workloadArgs.push(`--workload=${args.workload}`);
+if (args.workloads) workloadArgs.push(`--workloads=${args.workloads}`);
+if (args["test-files"]) workloadArgs.push(`--test-files=${args["test-files"]}`);
 
 for (const shards of shardCounts) {
   const result = await runCommand(
@@ -19,6 +23,7 @@ for (const shards of shardCounts) {
       `--shards=${shards}`,
       `--test-dir=${testDir}`,
       `--history=${history}`,
+      ...workloadArgs,
     ],
     { cwd: projectRoot },
   );

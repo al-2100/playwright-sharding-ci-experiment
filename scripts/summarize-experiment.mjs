@@ -23,6 +23,10 @@ function repetitionOf(runId) {
   return match ? Number.parseInt(match[1], 10) : null;
 }
 
+function baselineKey(workload, repetition) {
+  return `${workload ?? "default"}|${repetition ?? ""}`;
+}
+
 function round(value, digits = 4) {
   return Number.isFinite(value) ? Number(value.toFixed(digits)) : null;
 }
@@ -111,6 +115,7 @@ function summarize(runId, records, baselineByRepetition) {
   const testRunnerMs = durations.reduce((sum, value) => sum + value, 0);
   const averageShardMs = testRunnerMs / records.length;
   const strategy = records[0]?.strategy ?? "unknown";
+  const workload = records[0]?.workload ?? "default";
   const shards = Math.max(
     ...records.map((record) => Number(record.shards ?? 1)),
   );
@@ -119,7 +124,9 @@ function summarize(runId, records, baselineByRepetition) {
   );
   const repetition = repetitionOf(runId);
   const baselineMs =
-    strategy === "sequential" ? null : baselineByRepetition.get(repetition);
+    strategy === "sequential"
+      ? null
+      : baselineByRepetition.get(baselineKey(workload, repetition));
   const speedup = baselineMs ? baselineMs / makespanMs : null;
   const effectiveParallelism = shards * workers;
   const effectiveEfficiency = speedup ? speedup / effectiveParallelism : null;
@@ -130,6 +137,7 @@ function summarize(runId, records, baselineByRepetition) {
     runId,
     repetition,
     strategy,
+    workload,
     shards,
     workers,
     shardCountObserved: records.length,
@@ -166,7 +174,7 @@ function summarize(runId, records, baselineByRepetition) {
 function aggregateSummaries(summaries) {
   const byGroup = new Map();
   for (const summary of summaries) {
-    const key = `${summary.strategy}|${summary.shards}|${summary.workers}`;
+    const key = `${summary.workload}|${summary.strategy}|${summary.shards}|${summary.workers}`;
     if (!byGroup.has(key)) byGroup.set(key, []);
     byGroup.get(key).push(summary);
   }
@@ -176,6 +184,7 @@ function aggregateSummaries(summaries) {
       const first = group[0];
       return {
         strategy: first.strategy,
+        workload: first.workload,
         shards: first.shards,
         workers: first.workers,
         repetitions: group.length,
@@ -198,6 +207,8 @@ function aggregateSummaries(summaries) {
       };
     })
     .sort((a, b) => {
+      const workload = a.workload.localeCompare(b.workload);
+      if (workload) return workload;
       const strategy = a.strategy.localeCompare(b.strategy);
       if (strategy) return strategy;
       return a.shards - b.shards || a.workers - b.workers;
@@ -227,12 +238,12 @@ for (const file of files.filter((item) => item.endsWith(".meta.json"))) {
 
 const baselineByRepetition = new Map();
 for (const [runId, records] of recordsByRunId.entries()) {
-  if (!runId.startsWith("eval-seq-")) continue;
+  if (!runId.startsWith("eval-")) continue;
   if (records[0]?.strategy !== "sequential") continue;
   const repetition = repetitionOf(runId);
   if (!repetition) continue;
   baselineByRepetition.set(
-    repetition,
+    baselineKey(records[0]?.workload ?? "default", repetition),
     Math.max(...records.map((record) => Number(record.durationMs ?? 0))),
   );
 }
@@ -240,6 +251,8 @@ for (const [runId, records] of recordsByRunId.entries()) {
 const summaries = [...recordsByRunId.entries()]
   .map(([runId, records]) => summarize(runId, records, baselineByRepetition))
   .sort((a, b) => {
+    const workload = a.workload.localeCompare(b.workload);
+    if (workload) return workload;
     const rep = (a.repetition ?? 0) - (b.repetition ?? 0);
     if (rep) return rep;
     const strategy = a.strategy.localeCompare(b.strategy);
@@ -272,6 +285,7 @@ await writeJson(path.join(outputDir, "gha-aggregate.json"), {
 
 const header = [
   "run_id",
+  "workload",
   "repetition",
   "strategy",
   "shards",
@@ -291,6 +305,7 @@ const header = [
 const rows = summaries.map((summary) =>
   [
     summary.runId,
+    summary.workload,
     summary.repetition ?? "",
     summary.strategy,
     summary.shards,
@@ -315,6 +330,7 @@ await fs.writeFile(
 );
 
 const aggregateHeader = [
+  "workload",
   "strategy",
   "shards",
   "workers",
@@ -340,6 +356,7 @@ const aggregateHeader = [
 
 const aggregateRows = aggregates.map((aggregate) =>
   [
+    aggregate.workload,
     aggregate.strategy,
     aggregate.shards,
     aggregate.workers,

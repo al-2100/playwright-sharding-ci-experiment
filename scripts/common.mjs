@@ -66,6 +66,34 @@ export async function listSpecFiles(dir = path.join(projectRoot, "tests")) {
   return result.sort();
 }
 
+export async function workloadFiles(args) {
+  const explicit = String(args["test-files"] ?? "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  if (explicit.length > 0) return explicit.map(normalizeSlashes).sort();
+
+  const workload = args.workload ? String(args.workload) : "";
+  if (!workload) return [];
+
+  const workloadsPath = path.resolve(
+    projectRoot,
+    args.workloads ?? "workloads/variability.json",
+  );
+  const manifest = await readJson(workloadsPath, { workloads: [] });
+  const entry = (manifest.workloads ?? []).find((item) => item.id === workload);
+  if (!entry) {
+    throw new Error(
+      `No se encontró workload "${workload}" en ${relPath(workloadsPath)}`,
+    );
+  }
+  return (entry.files ?? []).map(normalizeSlashes).sort();
+}
+
+export function normalizeSlashes(value) {
+  return String(value).replaceAll("\\", "/");
+}
+
 export function median(values) {
   const clean = values
     .filter((value) => Number.isFinite(value))

@@ -1,0 +1,456 @@
+name: Variability subexperiment
+
+on:
+  workflow_dispatch:
+    inputs:
+      repetitions:
+        description: Number of evaluation repetitions per workload
+        required: true
+        default: "3"
+      calibration_runs:
+        description: Number of calibration runs per workload
+        required: true
+        default: "3"
+      workers:
+        description: Playwright workers per shard
+        required: true
+        default: "1"
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "22"
+  WORKLOADS_FILE: workloads/variability.json
+
+jobs:
+  prepare:
+    name: Prepare variability matrices
+    runs-on: ubuntu-24.04
+    outputs:
+      calibration: ${{ steps.matrix.outputs.calibration }}
+      sequential: ${{ steps.matrix.outputs.sequential }}
+      native8: ${{ steps.matrix.outputs.native8 }}
+      native12: ${{ steps.matrix.outputs.native12 }}
+      fully8: ${{ steps.matrix.outputs.fully8 }}
+      fully12: ${{ steps.matrix.outputs.fully12 }}
+      balanced8: ${{ steps.matrix.outputs.balanced8 }}
+      balanced12: ${{ steps.matrix.outputs.balanced12 }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - id: matrix
+        shell: bash
+        run: |
+          node scripts/gha-variability-matrix.mjs \
+            --repetitions='${{ inputs.repetitions }}' \
+            --calibration-runs='${{ inputs.calibration_runs }}' \
+            --workloads='${{ env.WORKLOADS_FILE }}' >> "$GITHUB_OUTPUT"
+
+  calibrate:
+    name: Calibrate ${{ matrix.workload }} r${{ matrix.calibration }}
+    needs: prepare
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare.outputs.calibration) }}
+    services:
+      juice-shop:
+        image: ghcr.io/al-2100/juice-shop-thesis@sha256:046398115a477c5c4b6b1fccead365d4a447ba466f82db7c3e30f4ddbade2ad8
+        ports:
+          - 3000:3000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: node scripts/wait-for-app.mjs
+      - name: Run calibration workload
+        run: |
+          node scripts/run-strategy.mjs \
+            --strategy=sequential \
+            --run-id=calibration-${{ matrix.workload }}-r${{ matrix.calibration }} \
+            --workload='${{ matrix.workload }}' \
+            --workloads='${{ env.WORKLOADS_FILE }}' \
+            --workers='${{ inputs.workers }}' \
+            --test-dir=tests
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: var-calibration-${{ matrix.workload }}-r${{ matrix.calibration }}
+          path: |
+            artifacts/raw/calibration-${{ matrix.workload }}-r${{ matrix.calibration }}
+            artifacts/runs/calibration-${{ matrix.workload }}-r${{ matrix.calibration }}
+          if-no-files-found: ignore
+
+  plan:
+    name: Build variability LPT plans
+    needs: calibrate
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - uses: actions/download-artifact@v4
+        with:
+          path: downloaded-artifacts
+          pattern: var-calibration-*
+          merge-multiple: true
+      - name: Create workload histories and plans
+        run: |
+          node scripts/gha-create-variability-plans.mjs \
+            --calibration-runs='${{ inputs.calibration_runs }}' \
+            --shard-counts=8,12 \
+            --workloads='${{ env.WORKLOADS_FILE }}' \
+            --test-dir=tests
+      - uses: actions/upload-artifact@v4
+        with:
+          name: variability-plans
+          path: artifacts/variability/**
+
+  sequential:
+    name: Sequential ${{ matrix.workload }} r${{ matrix.repetition }}
+    needs:
+      - prepare
+      - plan
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare.outputs.sequential) }}
+    services:
+      juice-shop:
+        image: ghcr.io/al-2100/juice-shop-thesis@sha256:046398115a477c5c4b6b1fccead365d4a447ba466f82db7c3e30f4ddbade2ad8
+        ports:
+          - 3000:3000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: node scripts/wait-for-app.mjs
+      - name: Run sequential workload
+        run: |
+          node scripts/run-strategy.mjs \
+            --strategy=sequential \
+            --run-id=eval-${{ matrix.workload }}-seq-r${{ matrix.repetition }} \
+            --workload='${{ matrix.workload }}' \
+            --workloads='${{ env.WORKLOADS_FILE }}' \
+            --workers='${{ inputs.workers }}' \
+            --test-dir=tests
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: var-eval-${{ matrix.workload }}-seq-r${{ matrix.repetition }}
+          path: |
+            artifacts/raw/eval-${{ matrix.workload }}-seq-r${{ matrix.repetition }}
+            artifacts/runs/eval-${{ matrix.workload }}-seq-r${{ matrix.repetition }}
+          if-no-files-found: ignore
+
+  native8:
+    name: Native m8 ${{ matrix.workload }} r${{ matrix.repetition }} s${{ matrix.shard }}
+    needs:
+      - prepare
+      - plan
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare.outputs.native8) }}
+    services:
+      juice-shop:
+        image: ghcr.io/al-2100/juice-shop-thesis@sha256:046398115a477c5c4b6b1fccead365d4a447ba466f82db7c3e30f4ddbade2ad8
+        ports:
+          - 3000:3000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: node scripts/wait-for-app.mjs
+      - name: Run native shard
+        run: |
+          node scripts/run-strategy.mjs \
+            --strategy=native \
+            --run-id=eval-${{ matrix.workload }}-native-m8-r${{ matrix.repetition }} \
+            --workload='${{ matrix.workload }}' \
+            --workloads='${{ env.WORKLOADS_FILE }}' \
+            --shards=8 \
+            --shard='${{ matrix.shard }}' \
+            --workers='${{ inputs.workers }}' \
+            --test-dir=tests
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: var-eval-${{ matrix.workload }}-native-m8-r${{ matrix.repetition }}-s${{ matrix.shard }}
+          path: |
+            artifacts/raw/eval-${{ matrix.workload }}-native-m8-r${{ matrix.repetition }}
+            artifacts/runs/eval-${{ matrix.workload }}-native-m8-r${{ matrix.repetition }}
+          if-no-files-found: ignore
+
+  native12:
+    name: Native m12 ${{ matrix.workload }} r${{ matrix.repetition }} s${{ matrix.shard }}
+    needs:
+      - prepare
+      - plan
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare.outputs.native12) }}
+    services:
+      juice-shop:
+        image: ghcr.io/al-2100/juice-shop-thesis@sha256:046398115a477c5c4b6b1fccead365d4a447ba466f82db7c3e30f4ddbade2ad8
+        ports:
+          - 3000:3000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: node scripts/wait-for-app.mjs
+      - name: Run native shard
+        run: |
+          node scripts/run-strategy.mjs \
+            --strategy=native \
+            --run-id=eval-${{ matrix.workload }}-native-m12-r${{ matrix.repetition }} \
+            --workload='${{ matrix.workload }}' \
+            --workloads='${{ env.WORKLOADS_FILE }}' \
+            --shards=12 \
+            --shard='${{ matrix.shard }}' \
+            --workers='${{ inputs.workers }}' \
+            --test-dir=tests
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: var-eval-${{ matrix.workload }}-native-m12-r${{ matrix.repetition }}-s${{ matrix.shard }}
+          path: |
+            artifacts/raw/eval-${{ matrix.workload }}-native-m12-r${{ matrix.repetition }}
+            artifacts/runs/eval-${{ matrix.workload }}-native-m12-r${{ matrix.repetition }}
+          if-no-files-found: ignore
+
+  fully8:
+    name: Fully m8 ${{ matrix.workload }} r${{ matrix.repetition }} s${{ matrix.shard }}
+    needs:
+      - prepare
+      - plan
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare.outputs.fully8) }}
+    services:
+      juice-shop:
+        image: ghcr.io/al-2100/juice-shop-thesis@sha256:046398115a477c5c4b6b1fccead365d4a447ba466f82db7c3e30f4ddbade2ad8
+        ports:
+          - 3000:3000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: node scripts/wait-for-app.mjs
+      - name: Run fullyParallel shard
+        run: |
+          node scripts/run-strategy.mjs \
+            --strategy=native-fully \
+            --run-id=eval-${{ matrix.workload }}-native-fully-m8-r${{ matrix.repetition }} \
+            --workload='${{ matrix.workload }}' \
+            --workloads='${{ env.WORKLOADS_FILE }}' \
+            --shards=8 \
+            --shard='${{ matrix.shard }}' \
+            --workers='${{ inputs.workers }}' \
+            --test-dir=tests
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: var-eval-${{ matrix.workload }}-native-fully-m8-r${{ matrix.repetition }}-s${{ matrix.shard }}
+          path: |
+            artifacts/raw/eval-${{ matrix.workload }}-native-fully-m8-r${{ matrix.repetition }}
+            artifacts/runs/eval-${{ matrix.workload }}-native-fully-m8-r${{ matrix.repetition }}
+          if-no-files-found: ignore
+
+  fully12:
+    name: Fully m12 ${{ matrix.workload }} r${{ matrix.repetition }} s${{ matrix.shard }}
+    needs:
+      - prepare
+      - plan
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare.outputs.fully12) }}
+    services:
+      juice-shop:
+        image: ghcr.io/al-2100/juice-shop-thesis@sha256:046398115a477c5c4b6b1fccead365d4a447ba466f82db7c3e30f4ddbade2ad8
+        ports:
+          - 3000:3000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: node scripts/wait-for-app.mjs
+      - name: Run fullyParallel shard
+        run: |
+          node scripts/run-strategy.mjs \
+            --strategy=native-fully \
+            --run-id=eval-${{ matrix.workload }}-native-fully-m12-r${{ matrix.repetition }} \
+            --workload='${{ matrix.workload }}' \
+            --workloads='${{ env.WORKLOADS_FILE }}' \
+            --shards=12 \
+            --shard='${{ matrix.shard }}' \
+            --workers='${{ inputs.workers }}' \
+            --test-dir=tests
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: var-eval-${{ matrix.workload }}-native-fully-m12-r${{ matrix.repetition }}-s${{ matrix.shard }}
+          path: |
+            artifacts/raw/eval-${{ matrix.workload }}-native-fully-m12-r${{ matrix.repetition }}
+            artifacts/runs/eval-${{ matrix.workload }}-native-fully-m12-r${{ matrix.repetition }}
+          if-no-files-found: ignore
+
+  balanced8:
+    name: Balanced m8 ${{ matrix.workload }} r${{ matrix.repetition }} s${{ matrix.shard }}
+    needs:
+      - prepare
+      - plan
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare.outputs.balanced8) }}
+    services:
+      juice-shop:
+        image: ghcr.io/al-2100/juice-shop-thesis@sha256:046398115a477c5c4b6b1fccead365d4a447ba466f82db7c3e30f4ddbade2ad8
+        ports:
+          - 3000:3000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - uses: actions/download-artifact@v4
+        with:
+          name: variability-plans
+          path: artifacts
+      - run: node scripts/wait-for-app.mjs
+      - name: Run balanced shard
+        run: |
+          node scripts/run-strategy.mjs \
+            --strategy=balanced \
+            --run-id=eval-${{ matrix.workload }}-balanced-m8-r${{ matrix.repetition }} \
+            --workload='${{ matrix.workload }}' \
+            --workloads='${{ env.WORKLOADS_FILE }}' \
+            --shards=8 \
+            --shard='${{ matrix.shard }}' \
+            --workers='${{ inputs.workers }}' \
+            --test-dir=tests \
+            --plan=artifacts/variability/${{ matrix.workload }}/plans/eval-${{ matrix.workload }}-balanced-m8/plan-8.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: var-eval-${{ matrix.workload }}-balanced-m8-r${{ matrix.repetition }}-s${{ matrix.shard }}
+          path: |
+            artifacts/raw/eval-${{ matrix.workload }}-balanced-m8-r${{ matrix.repetition }}
+            artifacts/runs/eval-${{ matrix.workload }}-balanced-m8-r${{ matrix.repetition }}
+          if-no-files-found: ignore
+
+  balanced12:
+    name: Balanced m12 ${{ matrix.workload }} r${{ matrix.repetition }} s${{ matrix.shard }}
+    needs:
+      - prepare
+      - plan
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare.outputs.balanced12) }}
+    services:
+      juice-shop:
+        image: ghcr.io/al-2100/juice-shop-thesis@sha256:046398115a477c5c4b6b1fccead365d4a447ba466f82db7c3e30f4ddbade2ad8
+        ports:
+          - 3000:3000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - uses: actions/download-artifact@v4
+        with:
+          name: variability-plans
+          path: artifacts
+      - run: node scripts/wait-for-app.mjs
+      - name: Run balanced shard
+        run: |
+          node scripts/run-strategy.mjs \
+            --strategy=balanced \
+            --run-id=eval-${{ matrix.workload }}-balanced-m12-r${{ matrix.repetition }} \
+            --workload='${{ matrix.workload }}' \
+            --workloads='${{ env.WORKLOADS_FILE }}' \
+            --shards=12 \
+            --shard='${{ matrix.shard }}' \
+            --workers='${{ inputs.workers }}' \
+            --test-dir=tests \
+            --plan=artifacts/variability/${{ matrix.workload }}/plans/eval-${{ matrix.workload }}-balanced-m12/plan-12.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: var-eval-${{ matrix.workload }}-balanced-m12-r${{ matrix.repetition }}-s${{ matrix.shard }}
+          path: |
+            artifacts/raw/eval-${{ matrix.workload }}-balanced-m12-r${{ matrix.repetition }}
+            artifacts/runs/eval-${{ matrix.workload }}-balanced-m12-r${{ matrix.repetition }}
+          if-no-files-found: ignore
+
+  summarize:
+    name: Summarize variability results
+    if: ${{ always() }}
+    needs:
+      - sequential
+      - native8
+      - native12
+      - fully8
+      - fully12
+      - balanced8
+      - balanced12
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - uses: actions/download-artifact@v4
+        with:
+          path: downloaded-artifacts
+          pattern: var-eval-*
+          merge-multiple: true
+      - name: Summarize
+        run: |
+          node scripts/summarize-experiment.mjs \
+            --input=downloaded-artifacts \
+            --output=artifacts/variability-summary
+      - uses: actions/upload-artifact@v4
+        with:
+          name: variability-summary
+          path: artifacts/variability-summary/**

@@ -8,6 +8,7 @@ import {
   readJson,
   relPath,
   runCommand,
+  workloadFiles,
   writeJson,
 } from "./common.mjs";
 
@@ -21,6 +22,8 @@ const baseURL = String(
   args["base-url"] ?? process.env.BASE_URL ?? "http://localhost:3000",
 );
 const testDir = String(args["test-dir"] ?? process.env.PW_TEST_DIR ?? "tests");
+const workload = args.workload ? String(args.workload) : null;
+const selectedFiles = await workloadFiles(args);
 
 const runDir = path.resolve(projectRoot, "artifacts/runs", runId);
 const rawDir = path.resolve(projectRoot, "artifacts/raw", runId);
@@ -40,6 +43,7 @@ let plannedFiles = null;
 let fullyParallel = false;
 
 if (strategy === "native" || strategy === "native-fully") {
+  cliArgs.push(...selectedFiles);
   cliArgs.push(`--shard=${shard}/${shards}`);
   fullyParallel = strategy === "native-fully";
 } else if (strategy === "balanced") {
@@ -68,11 +72,13 @@ if (strategy === "native" || strategy === "native-fully") {
     const skipped = {
       runId,
       strategy,
+      workload,
       shards,
       shard,
       workers,
       baseURL,
       plannedFiles: [],
+      selectedFiles,
       skipped: true,
       startedAt: new Date().toISOString(),
       finishedAt: new Date().toISOString(),
@@ -88,6 +94,8 @@ if (strategy === "native" || strategy === "native-fully") {
 } else if (strategy !== "sequential" && strategy !== "local-workers") {
   console.error(`Estrategia no soportada: ${strategy}`);
   process.exit(1);
+} else {
+  cliArgs.push(...selectedFiles);
 }
 
 const env = {
@@ -111,6 +119,7 @@ const result = await runCommand(npxCommand(), cliArgs, {
 const meta = {
   runId,
   strategy,
+  workload,
   shards,
   shard,
   workers,
@@ -118,6 +127,7 @@ const meta = {
   testDir,
   fullyParallel,
   plannedFiles,
+  selectedFiles,
   skipped: false,
   ...result,
   rawReport: relPath(rawReportPath),
