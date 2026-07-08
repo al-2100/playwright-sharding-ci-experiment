@@ -33,13 +33,6 @@ if (workloads.length === 0) {
   throw new Error(`No se encontraron workloads en ${workloadsPath}`);
 }
 
-function calibrationInputs(workload) {
-  return Array.from({ length: calibrationRuns }, (_, index) => {
-    const calibration = index + 1;
-    return `downloaded-artifacts/artifacts/raw/calibration-${workload}-r${calibration}`;
-  }).join(",");
-}
-
 function mean(values) {
   if (values.length === 0) return null;
   return values.reduce((sum, value) => sum + value, 0) / values.length;
@@ -55,27 +48,41 @@ function sampleStdDev(values) {
 }
 
 const workloadStats = [];
+const history = "artifacts/variability/history/history.json";
+const extract = await runCommand(
+  nodeCommand(),
+  [
+    "scripts/extract-durations.mjs",
+    "--input=downloaded-artifacts",
+    `--output=${history}`,
+    `--test-dir=${testDir}`,
+  ],
+  { cwd: projectRoot },
+);
+if (extract.exitCode !== 0) process.exit(extract.exitCode);
+
+const historyData = await readJson(path.resolve(projectRoot, history), {
+  items: {},
+});
+
+if (Object.keys(historyData.items ?? {}).length === 0) {
+  throw new Error(
+    "No se extrajeron duraciones de calibración; no se generarán planes LPT con fallback.",
+  );
+}
 
 for (const workload of workloads) {
-  const history = `artifacts/variability/${workload.id}/history/history.json`;
-  const extract = await runCommand(
-    nodeCommand(),
-    [
-      "scripts/extract-durations.mjs",
-      `--input=${calibrationInputs(workload.id)}`,
-      `--output=${history}`,
-      `--test-dir=${testDir}`,
-    ],
-    { cwd: projectRoot },
-  );
-  if (extract.exitCode !== 0) process.exit(extract.exitCode);
-
-  const historyData = await readJson(path.resolve(projectRoot, history), {
-    items: {},
-  });
   const durations = workload.files
     .map((file) => Number(historyData.items?.[file]?.medianMs ?? 0))
     .filter((value) => Number.isFinite(value) && value > 0);
+  if (durations.length !== workload.files.length) {
+    const missing = workload.files.filter(
+      (file) => !Number(historyData.items?.[file]?.medianMs ?? 0),
+    );
+    throw new Error(
+      `El workload "${workload.id}" no tiene duración histórica para todos sus archivos. Faltan: ${missing.join(", ")}`,
+    );
+  }
   const average = mean(durations);
   const stdDev = sampleStdDev(durations);
   workloadStats.push({
