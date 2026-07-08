@@ -352,7 +352,16 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: variability-plans
-          path: artifacts
+          path: artifacts/variability
+      - name: Check downloaded plan
+        shell: bash
+        run: |
+          PLAN="artifacts/variability/${{ matrix.workload }}/plans/eval-${{ matrix.workload }}-balanced-m8/plan-8.json"
+          test -f "$PLAN" || {
+            echo "Expected plan not found: $PLAN"
+            find artifacts -maxdepth 5 -type f | sort
+            exit 1
+          }
       - run: node scripts/wait-for-app.mjs
       - name: Run balanced shard
         run: |
@@ -400,7 +409,16 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: variability-plans
-          path: artifacts
+          path: artifacts/variability
+      - name: Check downloaded plan
+        shell: bash
+        run: |
+          PLAN="artifacts/variability/${{ matrix.workload }}/plans/eval-${{ matrix.workload }}-balanced-m12/plan-12.json"
+          test -f "$PLAN" || {
+            echo "Expected plan not found: $PLAN"
+            find artifacts -maxdepth 5 -type f | sort
+            exit 1
+          }
       - run: node scripts/wait-for-app.mjs
       - name: Run balanced shard
         run: |
